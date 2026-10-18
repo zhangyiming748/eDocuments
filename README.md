@@ -36,7 +36,7 @@
            │          │
            ▼          ▼
   OCR 结果 JSON 缓存目录   Elasticsearch 8（单节点）
-  （持久化数据卷）         （IK 插件 + 持久化数据卷）
+  （绑定挂载 ./data/cache） （IK 插件 + 命名卷 es-data）
 ```
 
 - Go 程序通过 `os/exec` 调用容器内的 `tesseract` 命令行，避免 CGO 交叉编译问题。
@@ -152,9 +152,9 @@ eDocuments/
 ## Docker 部署细节
 
 - ES 镜像：基于 `elasticsearch:8.x` 自定义 Dockerfile 安装版本匹配的 `analysis-ik` 插件。
-- ES 配置：`discovery.type=single-node`、`xpack.security.enabled=false`（纯内网简化部署）、`ES_JAVA_OPTS=-Xms1g -Xmx1g`；数据卷 `es-data` 持久化；ES 端口只在 compose 内部网络可见，不映射到宿主机。
+- ES 配置：`discovery.type=single-node`、`xpack.security.enabled=false`（纯内网简化部署）、`ES_JAVA_OPTS=-Xms1g -Xmx1g`；数据由命名卷 `es-data` 持久化（ES 数据为容器私有、随机 I/O 密集，不适合绑定挂载）；磁盘水位放宽到 90%/95%/97%，避免单节点在宿主机磁盘偏紧时拒绝分配分片；ES 端口只在 compose 内部网络可见，不映射到宿主机。
 - 网络边界：仅 Go 服务的 8080 端口映射到宿主机，供局域网访问；不配置任何内网穿透。宿主机防火墙建议只放行局域网网段的 8080，拒绝其他来源；服务器本身不要直接暴露在互联网上。
-- edocs 镜像：多阶段构建，Go 编译产物放入含 Tesseract 与中文语言包的 slim 镜像；扫描根目录以只读卷挂载到 `/data/scan`，缓存目录读写挂载到 `/data/cache`。
+- edocs 镜像：多阶段构建，Go 编译产物放入含 Tesseract 与中文语言包的 slim 镜像；扫描根目录以只读卷挂载到 `/data/scan`，OCR JSON 缓存**绑定挂载**到宿主机 `./data/cache`（普通文件，便于直接抽查与备份，`.gitignore` 已忽略）。
 - 典型使用：
 
 ```bash
