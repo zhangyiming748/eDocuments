@@ -15,7 +15,7 @@
 9. 文档唯一 ID 为**相对路径的 SHA-256 哈希**，不同年份/类目下的同名文件夹不会冲突；文件夹名仅作为标题。
 10. Elasticsearch 安装 **IK 中文分词插件**（插件版本与 ES 版本严格一致，使用自定义 Dockerfile 构建 ES 镜像）：索引分词 `ik_max_word`，搜索分词 `ik_smart`。
 11. 规模约每年 300 页，全量 OCR 耗时为分钟级，不需要任务队列；一个索引命令顺序/小并发跑完，支持基于文件 mtime+size 的增量更新、删除同步与失败页报告。
-12. 服务仅绑定内网使用，Elasticsearch 端口不对宿主机/公网暴露；部署机器内存 16～64GB，ES 堆内存固定 1GB。
+12. 部署形态为**纯单位局域网内访问**，不做内网穿透、不绑定公网域名、不设用户名密码（信任边界即单位局域网）；同事通过 `http://<服务器内网IP>:8080` 直接访问搜索页。Elasticsearch 端口不对宿主机暴露，仅 Docker 内部网络可达；部署机器内存 16～64GB，ES 堆内存固定 1GB。
 
 # 实现方案（项目介绍）
 
@@ -153,6 +153,7 @@ eDocuments/
 
 - ES 镜像：基于 `elasticsearch:8.x` 自定义 Dockerfile 安装版本匹配的 `analysis-ik` 插件。
 - ES 配置：`discovery.type=single-node`、`xpack.security.enabled=false`（纯内网简化部署）、`ES_JAVA_OPTS=-Xms1g -Xmx1g`；数据卷 `es-data` 持久化；ES 端口只在 compose 内部网络可见，不映射到宿主机。
+- 网络边界：仅 Go 服务的 8080 端口映射到宿主机，供局域网访问；不配置任何内网穿透。宿主机防火墙建议只放行局域网网段的 8080，拒绝其他来源；服务器本身不要直接暴露在互联网上。
 - edocs 镜像：多阶段构建，Go 编译产物放入含 Tesseract 与中文语言包的 slim 镜像；扫描根目录以只读卷挂载到 `/data/scan`，缓存目录读写挂载到 `/data/cache`。
 - 典型使用：
 
