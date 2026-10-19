@@ -2,6 +2,47 @@
 
 纸质档案数字化：把扫描件图片在本地完成 OCR 识别，文本存入 Elasticsearch，提供一个简单的中文全文搜索页面。全程离线运行，扫描件不出本机。
 
+# 快速启动
+
+最短路径就两步：导入方跑几条命令，剩下的就在浏览器里搜。全程离线，扫描件不出内网。
+
+## 一、导入数据的人
+
+前提：机器已装 Docker 与 Docker Compose。编排文件在本仓库的 `deploy/docker-compose.yml`（客户拿到的交付包中，它位于包的根目录），命令都在该文件所在目录执行——在哪个目录执行，`data/scan`、`data/cache` 就建在哪个目录。
+
+**第 1 步 · 放好扫描件。** 目录约定是「一个文件夹 = 一份档案」，文件夹里直接放该档案的页图，按文件名升序即为页序：
+
+```bash
+mkdir -p data/scan data/cache
+```
+
+```
+data/scan/
+└── 2024/
+    └── 综合类/
+        └── 某某档案/
+            ├── scan_0001.jpg
+            └── scan_0002.jpg
+```
+
+**第 2 步 · 启动并建索引。**
+
+```bash
+docker compose up -d                   # 拉取镜像，启动 ES 与搜索服务
+docker compose run --rm edocs index    # 扫描 + OCR + 写入 ES
+```
+
+**第 3 步 · 验证并转交。** 浏览器打开 `http://<本机内网IP>:8080`，能看到搜索页即部署完成，把这个地址发给使用者即可。
+
+以后新增档案：放进 `data/scan` 后重跑第 2 步的 `index` 命令，已识别过的页会跳过（增量更新）。首次全量索引视页数多寡，通常数分钟到半小时。
+
+## 二、使用者
+
+1. 在**同一局域网**内打开浏览器，访问导入方给的地址 `http://<内网IP>:8080`；无需安装任何软件，无需注册登录。
+2. 在搜索框输入关键词后回车。支持多个关键词，词与词之间用空格分隔。
+3. 结果列表给出档案标题、正文中的命中片段（关键词高亮）与页数。
+4. 精确检索没有结果时，会自动退到一次容错检索（2～4 字词容忍 1 个错字），用于召回 OCR 误识或输入偏差的档案；确实无结果时页面会给出提示。
+
 # 大纲
 
 1. 全部编程语言使用 Go。
@@ -71,7 +112,8 @@ eDocuments/
 ├── docker/
 │   └── elasticsearch/Dockerfile   # 官方 ES 镜像 + IK 插件
 ├── Dockerfile                 # Go 构建 + tesseract 运行时
-└── docker-compose.yml
+└── deploy/
+    └── docker-compose.yml     # 部署编排（镜像来自 Docker Hub）
 ```
 
 ## 文档发现与页序
@@ -173,6 +215,22 @@ docker compose up -d edocs                   # 启动搜索服务
 # 变更记录
 
 > 按时间倒序记录，新条目追加在本章节顶部；历史条目保留不改。
+
+## 2026-10-19 · 合并部署文件：compose 只保留 `deploy/` 一份
+
+### 变更
+
+- 删除仓库根目录的 `docker-compose.yml`，仅保留 `deploy/docker-compose.yml` 作为唯一编排入口。此前两份内容几乎一致，容易误用，且因目录不同会导致数据落点不同。
+- 仓库内的日常操作目录相应变为 `deploy/`；`data/scan`、`data/cache` 随之位于 `deploy/` 下。
+- compose 所属项目名与命名卷名固定为 `deploy` / `deploy_es-data`。
+
+### 影响
+
+| 方面 | 说明 |
+|---|---|
+| 仓库内操作 | 先 `cd deploy` 再执行 `docker compose` 命令 |
+| 客户交付 | 不受影响：交付包里本来就只有这一份 compose |
+| 已有数据 | 此前用根目录那份建过索引的，ES 数据在旧命名卷 `edocuments_es-data` 中，新项目下不可见；把旧 `data/cache` 拷到 `deploy/data/cache` 后执行 `docker compose run --rm edocs index --reindex` 即可由缓存重建，无需重新 OCR |
 
 ## 2026-10-19 · 新增 linux/arm64 支持
 
