@@ -35,6 +35,21 @@ const pageTemplate = `<!DOCTYPE html>
     border:1px solid #d0d4da; border-radius:4px; text-decoration:none; color:var(--primary); background:#fff; font-size:14px;
   }
   nav.pager span.cur { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .viewer-head { background:#fff; border:1px solid #e6e8ec; border-radius:6px; padding:12px 16px; margin-bottom:12px; }
+  .viewer-head h2 { margin:0 0 4px; font-size:16px; }
+  .viewer-head .path { margin:0; }
+  .viewer-head .back { float:right; font-size:13px; color:var(--primary); text-decoration:none; }
+  .viewer { background:#3a3a3a; border-radius:6px; padding:16px; text-align:center; }
+  .viewer img.page { max-width:100%; max-height:76vh; background:#fff; border-radius:2px; box-shadow:0 2px 10px rgba(0,0,0,.35); }
+  .viewer .plain { color:#ddd; font-size:13px; padding:40px 0; }
+  nav.viewer-nav { margin-top:14px; text-align:center; }
+  nav.viewer-nav a, nav.viewer-nav span.disabled {
+    display:inline-block; min-width:88px; padding:8px 16px; margin:0 6px;
+    border:1px solid #d0d4da; border-radius:4px; text-decoration:none; font-size:14px; background:#fff;
+  }
+  nav.viewer-nav a { color:var(--primary); }
+  nav.viewer-nav span.disabled { color:#aaa; border-color:#e6e8ec; background:#f2f3f5; }
+  nav.viewer-nav .pos { display:inline-block; min-width:110px; color:#555; font-size:14px; }
   footer { color:#999; font-size:12px; text-align:center; padding:16px 0; }
 </style>
 </head>
@@ -51,12 +66,26 @@ const pageTemplate = `<!DOCTYPE html>
 <main>
   <div class="wrap">
     {{if .ErrMsg}}<div class="err">{{.ErrMsg}}</div>{{end}}
-    {{if .Result}}
+    {{if .Doc}}
+      <div class="viewer-head">
+        <a class="back" href="/">返回检索</a>
+        <h2>{{.Doc.Title}}</h2>
+        <div class="path">{{.Doc.RelPath}}</div>
+      </div>
+      <div class="viewer">
+        <img class="page" src="/doc/image?p={{.Doc.RelPath | urlquery}}&f={{.Doc.File | urlquery}}" alt="{{.Doc.Title}} 第 {{.Doc.Page}} 页">
+      </div>
+      <nav class="viewer-nav">
+        {{if .Doc.HasPrev}}<a href="/doc?p={{.Doc.RelPath | urlquery}}&n={{.Doc.PrevPage}}">上一页</a>{{else}}<span class="disabled">上一页</span>{{end}}
+        <span class="pos">第 {{.Doc.Page}} / {{.Doc.Total}} 页</span>
+        {{if .Doc.HasNext}}<a href="/doc?p={{.Doc.RelPath | urlquery}}&n={{.Doc.NextPage}}">下一页</a>{{else}}<span class="disabled">下一页</span>{{end}}
+      </nav>
+    {{else if .Result}}
       <div class="meta">共找到 {{.Result.Total}} 条与“{{.Query}}”相关的档案{{if gt .Result.Total 99}}（前 100 条可分页查看）{{end}}</div>
       {{if .Result.Hits}}
         {{range .Result.Hits}}
         <div class="card">
-          <h2>{{if .HighlightTitle}}{{.HighlightTitle}}{{else}}{{.Title}}{{end}}</h2>
+          <h2><a href="/doc?p={{.RelativePath | urlquery}}">{{if .HighlightTitle}}{{.HighlightTitle}}{{else}}{{.Title}}{{end}}</a></h2>
           <div class="path">{{.RelativePath}} ｜ 共 {{.PageCount}} 页</div>
           {{range .Snippets}}<p class="snippet">{{.}}</p>{{end}}
         </div>

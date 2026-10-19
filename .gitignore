@@ -7,3 +7,5 @@
 
 # 系统文件
 .DS_Store
+*.json
+*.jpg

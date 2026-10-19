@@ -59,6 +59,7 @@ func usage() {
 通用参数（也可用环境变量 EDOCS_ES / EDOCS_CACHE / EDOCS_SCAN_ROOT）:
   --es       Elasticsearch 地址 (默认 http://elasticsearch:9200)
   --cache    OCR JSON 缓存目录 (默认 ./data/cache)
+  --scan     扫描件根目录 (默认 ./data/scan，serve 详情页据此展示原图)
 `)
 }
 
@@ -275,6 +276,7 @@ func runServe(args []string) error {
 	cacheDir := fs.String("cache", env("EDOCS_CACHE", "./data/cache"), "OCR JSON 缓存目录（serve 仅用于提示，不读写）")
 	esAddr := fs.String("es", env("EDOCS_ES", "http://elasticsearch:9200"), "Elasticsearch 地址")
 	addr := fs.String("addr", env("EDOCS_ADDR", ":8080"), "HTTP 监听地址")
+	scanRoot := fs.String("scan", env("EDOCS_SCAN_ROOT", "./data/scan"), "扫描件根目录（详情页展示原始图片）")
 	_ = fs.Parse(args)
 	_ = cacheDir
 
@@ -285,7 +287,7 @@ func runServe(args []string) error {
 	if err := st.EnsureIndex(context.Background()); err != nil {
 		return err
 	}
-	h, err := web.NewHandler(st)
+	h, err := web.NewHandler(st, *scanRoot)
 	if err != nil {
 		return err
 	}

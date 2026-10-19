@@ -85,24 +85,13 @@ func Scan(root string) ([]model.SourceDocument, []string, error) {
 
 // buildDocument 解析单个叶子目录，skip=true 表示该目录应跳过。
 func buildDocument(root, dir string) (doc model.SourceDocument, warnings []string, skip bool, err error) {
-	entries, err := os.ReadDir(dir)
+	images, nonImages, hasSubDir, err := readImages(dir)
 	if err != nil {
 		return doc, nil, false, err
 	}
-
-	var images []string
-	var nonImages []string
-	for _, e := range entries {
-		if e.IsDir() {
-			// 叶子目录判定之外的竞态保护：新出现的子目录直接跳过本目录。
-			return doc, nil, true, nil
-		}
-		name := e.Name()
-		if imageExts[strings.ToLower(filepath.Ext(name))] {
-			images = append(images, name)
-		} else {
-			nonImages = append(nonImages, name)
-		}
+	if hasSubDir {
+		// 叶子目录判定之外的竞态保护：新出现的子目录直接跳过本目录。
+		return doc, nil, true, nil
 	}
 
 	if len(images) == 0 {
@@ -145,6 +134,38 @@ func buildDocument(root, dir string) (doc model.SourceDocument, warnings []strin
 		})
 	}
 	return doc, warnings, false, nil
+}
+
+// readImages 读 dir，按受支持的扩展名把文件名分成图片、非图片两组。
+// 目录下存在子目录时 hasSubDir=true，调用方据此跳过该目录；返回切片未排序。
+func readImages(dir string) (images, nonImages []string, hasSubDir bool, err error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			return nil, nil, true, nil
+		}
+		name := e.Name()
+		if imageExts[strings.ToLower(filepath.Ext(name))] {
+			images = append(images, name)
+		} else {
+			nonImages = append(nonImages, name)
+		}
+	}
+	return images, nonImages, false, nil
+}
+
+// PageFiles 返回 dir 下受支持的扫描图片文件名，按页序（文件名字典序）排序。
+// 供展示原始扫描件时复用，保证页序与 index 完全一致。
+func PageFiles(dir string) ([]string, error) {
+	images, _, _, err := readImages(dir)
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(images)
+	return images, nil
 }
 
 // checkPageSequence 解析文件名中的数字，若出现重复或非递增则告警，
