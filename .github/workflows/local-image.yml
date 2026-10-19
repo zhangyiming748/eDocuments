@@ -1,0 +1,69 @@
+# 手动把已发布到 Docker Hub 的镜像取回来（给无法直连 Docker Hub 的环境用）。
+#
+# 用法：仓库 Actions → 左侧选 "Fetch images (manual)" → Run workflow
+#       填 tag（与发布时的 git tag 一致，如 v1.0.0；也可填 latest）、选架构。
+# 跑完后在该次运行页面的 Artifacts 里下载 tar.gz，拷到目标机器：
+#   gunzip images-amd64.tar.gz && docker load -i images-amd64.tar
+#
+# 为什么按架构分开导出：Docker Hub 上的多架构是 manifest list，docker pull 会按当前机器
+# 架构自动选层；但 docker save 只能导出本地已有的那一份，所以一个 tar 里装不下两个架构。
+# 同一个仓库 tag 在同一个任务里被 pull 两次的话，后一次会覆盖前一次，因此两个架构放在
+# 两个并行任务里（矩阵），各自产出各自的 tar。
+name: Fetch images (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 要取回的镜像 tag（与发布时的 git tag 一致）
+        required: true
+        default: latest
+      arch:
+        description: 导出哪个架构
+        required: true
+        type: choice
+        default: amd64
+        options:
+          - amd64
+          - arm64
+          - both
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # 选 both 时展开成两个并行任务，否则只有所选的那一个。
+      matrix:
+        arch: ${{ inputs.arch == 'both' && fromJSON('["amd64", "arm64"]') || fromJSON(format('["{0}"]', inputs.arch)) }}
+    steps:
+      # 匿名拉取会受 Docker Hub 的 IP 限流影响，GitHub runner 是共享 IP，登录后更稳
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Pull images (linux/${{ matrix.arch }})
+        run: |
+          docker pull --platform linux/${{ matrix.arch }} zhangyiming748/edocs:${{ inputs.tag }}
+          docker pull --platform linux/${{ matrix.arch }} zhangyiming748/edocs-es:${{ inputs.tag }}
+
+      - name: Save to tar.gz
+        run: |
+          docker save -o images-${{ matrix.arch }}.tar \
+            zhangyiming748/edocs:${{ inputs.tag }} \
+            zhangyiming748/edocs-es:${{ inputs.tag }}
+          gzip -9 images-${{ matrix.arch }}.tar
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edocs-images-${{ matrix.arch }}-${{ inputs.tag }}
+          path: images-${{ matrix.arch }}.tar.gz
+          # tar 已用 gzip 压过，再压一遍纯属浪费
+          compression-level: 0
+          retention-days: 14
