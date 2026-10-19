@@ -174,6 +174,26 @@ docker compose up -d edocs                   # 启动搜索服务
 
 > 按时间倒序记录，新条目追加在本章节顶部；历史条目保留不改。
 
+## 2026-10-19 · 新增 linux/arm64 支持
+
+### 变更
+
+- `.github/workflows/release-images.yml`：构建平台由单一 `linux/amd64` 扩展为 `linux/amd64` + `linux/arm64` 双架构。
+  - 新增 `docker/setup-qemu-action@v4` 步骤，为 amd64 runner 注册跨架构模拟，使 arm64 镜像可在其上构建。
+  - `platforms` 改为多行列表，由 `docker/build-push-action` 产出多架构 manifest list。
+
+### 影响
+
+| 方面 | 说明 |
+|---|---|
+| 客户侧 | 无需改动：`docker pull` 会按宿主机架构自动选取对应镜像层，x86 机器仍使用原生 amd64 层 |
+| 构建耗时 | 由 2 路增至 4 路构建，arm64 两路经 QEMU 模拟执行 `apt install tesseract-ocr*`、`go build` 等步骤，耗时明显增加 |
+| 构建缓存 | `type=gha` 缓存按平台分别生效，重复发布仍可复用 |
+
+### 适用场景
+
+- 客户部署在 ARM 服务器，或需要在 Apple Silicon 开发机（Mac M 系列）上原生运行容器时，可直接使用 arm64 镜像，避免模拟带来的性能损耗与偶发兼容问题。
+
 ## 2026-10-19 · 交付形态升级：本地构建 → 镜像交付
 
 ### 背景

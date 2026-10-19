@@ -1,4 +1,4 @@
-# 推送 tag 时，在 GitHub Actions（linux/amd64 原生架构）构建两个镜像并推送到 Docker Hub。
+# 推送 tag 时，在 GitHub Actions 构建两个镜像（linux/amd64 原生构建，经 QEMU 同时产出 linux/arm64）并推送到 Docker Hub。
 #
 # 触发方式：
 #   git tag v1.0.0 && git push origin v1.0.0
@@ -40,6 +40,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
+      - uses: docker/setup-qemu-action@v4
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
@@ -59,7 +61,9 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
-          platforms: linux/amd64
+          platforms: |
+            linux/amd64
+            linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
