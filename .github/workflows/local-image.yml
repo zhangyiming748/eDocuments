@@ -10,6 +10,11 @@
 # 架构自动选层；但 docker save 只能导出本地已有的那一份，所以一个 tar 里装不下两个架构。
 # 同一个仓库 tag 在同一个任务里被 pull 两次的话，后一次会覆盖前一次，因此两个架构放在
 # 两个并行任务里（矩阵），各自产出各自的 tar。
+#
+# save 为什么也要带 --platform：新 runner（ubuntu-24.04+）的 Docker 默认启用 containerd
+# 存储，pull --platform 后本地只有单个架构的内容，但镜像 tag 仍指向多架构 manifest list；
+# 不带 --platform 的 save 会尝试导出整个 index，序列化时找不到另一平台的 digest，报
+# "unable to create manifests file: content digest ...: not found"。
 name: Fetch images (manual)
 
 on:
@@ -55,7 +60,7 @@ jobs:
 
       - name: Save to tar.gz
         run: |
-          docker save -o images-${{ matrix.arch }}.tar \
+          docker save --platform linux/${{ matrix.arch }} -o images-${{ matrix.arch }}.tar \
             zhangyiming748/edocs:${{ inputs.tag }} \
             zhangyiming748/edocs-es:${{ inputs.tag }}
           gzip -9 images-${{ matrix.arch }}.tar
