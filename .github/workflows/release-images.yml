@@ -1,0 +1,67 @@
+# 推送 tag 时，在 GitHub Actions（linux/amd64 原生架构）构建两个镜像并推送到 Docker Hub。
+#
+# 触发方式：
+#   git tag v1.0.0 && git push origin v1.0.0
+#   镜像 tag 直接使用推送的 git tag（即 v1.0.0），仓库名为 <DOCKERHUB_USERNAME>/edocs 与 /edocs-es。
+#
+# 前置条件：仓库 Settings → Secrets and variables → Actions 里配置
+#   DOCKERHUB_USERNAME  Docker Hub 用户名
+#   DOCKERHUB_TOKEN     Docker Hub Access Token（Account Settings → Security → New Access Token）
+#                      如果账号开了两步验证，必须用 Access Token，密码会被拒绝。
+name: Release images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-images-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 应用镜像：Go 二进制 + tesseract 中文语言包
+          - image: edocs
+            dockerfile: ./Dockerfile
+          # ES 镜像：官方 Elasticsearch + IK 中文分词插件
+          - image: edocs-es
+            dockerfile: docker/elasticsearch/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: 生成镜像 tag 与 labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=tag
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

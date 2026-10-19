@@ -1,0 +1,10 @@
+# 构建上下文瘦身：这些内容不需要进构建镜像
+.git
+.github
+deploy
+data
+*.md
+LICENSE
+*.tar
+*.tar.gz
+.DS_Store

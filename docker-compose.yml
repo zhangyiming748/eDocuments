@@ -1,7 +1,6 @@
 services:
   elasticsearch:
-    build:
-      context: ./docker/elasticsearch
+    image: zhangyiming748/edocs-es:latest
     container_name: edocs-elasticsearch
     environment:
       - discovery.type=single-node
@@ -27,8 +26,7 @@ services:
     restart: unless-stopped
 
   edocs:
-    build:
-      context: .
+    image: zhangyiming748/edocs:latest
     container_name: edocs-app
     depends_on:
       elasticsearch:

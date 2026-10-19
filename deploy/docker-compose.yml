@@ -1,0 +1,50 @@
+# 客户侧部署文件：镜像来自 Docker Hub（zhangyiming748/edocs、edocs-es），不需要源码，也不需要 .env。
+# 扫描件根目录如需自定义，用 SCAN_ROOT=/path/to/scan 覆盖（默认 ./data/scan）。
+#
+# 首次部署：
+#   mkdir -p data/scan data/cache && docker compose up -d
+#   docker compose run --rm edocs index     # 扫描 + OCR + 入库，之后浏览器访问 http://<内网IP>:8080
+services:
+  elasticsearch:
+    image: zhangyiming748/edocs-es:latest
+    container_name: edocs-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      # 单节点内网部署，放宽磁盘水位（默认 85%/90%/95%），数据量极小
+      - cluster.routing.allocation.disk.watermark.low=90%
+      - cluster.routing.allocation.disk.watermark.high=95%
+      - cluster.routing.allocation.disk.watermark.flood_stage=97%
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+    # 9200 不对宿主机暴露，仅 compose 内部网络可达
+    expose:
+      - "9200"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/9200'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  edocs:
+    image: zhangyiming748/edocs:latest
+    container_name: edocs-app
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - EDOCS_ES=http://elasticsearch:9200
+      - EDOCS_SCAN_ROOT=/data/scan
+      - EDOCS_CACHE=/data/cache
+    volumes:
+      - ${SCAN_ROOT:-./data/scan}:/data/scan:ro
+      - ./data/cache:/data/cache
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+volumes:
+  es-data:
