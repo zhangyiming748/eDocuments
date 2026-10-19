@@ -169,3 +169,54 @@ docker compose up -d edocs                   # 启动搜索服务
 - 每年约 300 页，全量 OCR 预计数分钟到半小时（取决于扫描清晰度与机器 CPU）。
 - ES 堆内存固定 1GB，在 16～64GB 内存的机器上资源充裕；OCR worker 默认 2 并发，可按 CPU 核数调整。
 - 数据安全重点备份两处：扫描根目录原件与 `/data/cache` 下的 JSON 缓存；ES 数据卷可随时由缓存重建。
+
+# 变更记录
+
+> 按时间倒序记录，新条目追加在本章节顶部；历史条目保留不改。
+
+## 2026-10-19 · 交付形态升级：本地构建 → 镜像交付
+
+### 背景
+
+原先交付方式是把源码交给部署方，在目标机器上执行 `docker compose build`。这要求客户机器具备 Go 工具链、能访问 `docker.elastic.co` 与 IK 插件源、并有稳定的构建网络；此外在 Apple Silicon 开发机上构建，还会引入「构建架构与实际部署架构不一致」的风险。
+
+### 新增
+
+- `.github/workflows/release-images.yml`：推送 `v*` tag 时，在 GitHub Actions 的 `ubuntu-latest`（linux/amd64 原生架构）上构建并推送镜像到 Docker Hub。
+  - 矩阵构建，两个镜像并行：`edocs`（Go 二进制 + Tesseract 中文语言包）、`edocs-es`（官方 Elasticsearch + IK 中文分词插件）。
+  - 镜像 tag 由 `docker/metadata-action` 依据推送的 git tag 生成，并自动附加 `latest`，同时写入 OCI labels。
+  - 使用 `type=gha` 构建缓存，重复发布时复用。
+  - Docker Hub 凭据取自仓库 Secrets：`DOCKERHUB_USERNAME`、`DOCKERHUB_PASSWORD`。
+- `deploy/docker-compose.yml`：面向客户的最小部署文件，只声明服务与镜像，不含 `build`、不依赖源码。
+- `.dockerignore`：排除 `.git`、`data/`、`deploy/`、`*.md` 等，缩小构建上下文。
+
+### 变更
+
+- `docker-compose.yml`：两个服务由 `build`（本地构建）改为 `image`（拉取 Docker Hub），即 `zhangyiming748/edocs:latest`、`zhangyiming748/edocs-es:latest`。
+- 交付形态从「源码交付」升级为「镜像交付」：客户侧仅需一份 compose 文件与空数据目录。
+
+### 改进对照
+
+| 维度 | 改进前 | 改进后 |
+|---|---|---|
+| 目标机要求 | 需 Go 工具链及外网依赖可达 | 仅需能拉取 Docker Hub 镜像 |
+| 架构一致性 | 开发机（可能 arm64）构建，存在架构不匹配风险 | 统一在 linux/amd64 runner 构建，与 x86 服务器一致 |
+| 发布一致性 | 依赖手工构建与推送，易遗漏 | 打 tag 即自动构建发布，tag 与镜像一一对应 |
+| 构建耗时 | 每次全量构建 | 复用 Actions 构建缓存 |
+
+### 发布与部署
+
+```bash
+# 发布（示例 tag）
+git tag v1.0.0 && git push origin v1.0.0
+
+# 客户侧部署
+mkdir -p data/scan data/cache
+docker compose up -d
+docker compose run --rm edocs index
+```
+
+### 注意事项
+
+- 镜像交付要求部署侧网络能访问 Docker Hub；若为完全离线的内网，需在一台可联网的机器上 `docker pull` 后 `docker save`，再拷入内网 `docker load`。
+- 客户侧 compose 使用 `:latest`，实际部署版本取决于最近一次发布；如需固定版本，将其改为具体 tag（如 `:v1.0.0`）。
