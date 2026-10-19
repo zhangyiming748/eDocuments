@@ -11,10 +11,11 @@
 # 同一个仓库 tag 在同一个任务里被 pull 两次的话，后一次会覆盖前一次，因此两个架构放在
 # 两个并行任务里（矩阵），各自产出各自的 tar。
 #
-# save 为什么也要带 --platform：新 runner（ubuntu-24.04+）的 Docker 默认启用 containerd
-# 存储，pull --platform 后本地只有单个架构的内容，但镜像 tag 仍指向多架构 manifest list；
-# 不带 --platform 的 save 会尝试导出整个 index，序列化时找不到另一平台的 digest，报
-# "unable to create manifests file: content digest ...: not found"。
+# save 为什么也要带 --platform：ubuntu-26.04 runner 预装的 Docker 默认启用 containerd
+# 镜像存储，pull --platform 后本地只有单个架构的内容，但镜像 tag 仍指向多架构 manifest
+# list；不带 --platform 的 save 会尝试导出整个 index，序列化时找不到另一平台的 digest，
+# 报 "unable to create manifests file: content digest ...: not found"。旧 runner
+# （ubuntu-latest）仍是传统存储，save 只导出本地拉到的那一份，所以早先不加也能跑通。
 name: Fetch images (manual)
 
 on:
