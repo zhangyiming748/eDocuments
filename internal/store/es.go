@@ -197,11 +197,17 @@ func (s *ElasticStore) DeleteDocument(ctx context.Context, id string) error {
 }
 
 // buildSearchBody 组装查询体。两阶段检索：
-//   - 精确模式：simple_query_string 词/短语匹配；
+//   - 精确模式：分档匹配（见下）；
 //   - 容错模式：multi_match + fuzziness，召回 OCR 错字或用户输入差一字的结果。
 //
 // 仅当精确模式命中为 0 时才退到容错模式，避免精确命中时混入模糊噪声。
 // fuzziness 用 AUTO:2,5：单字词不容错，2～4 字词容忍 1 字之差，5 字以上容忍 2 字。
+//
+// 精确模式用 bool.should 拆成三档，靠 boost 把档位拉开（差值远大于档内 BM25 波动），
+// 使查询词被 ik_smart 切成多个词时（如「施工队伍」→ 施工/队伍）排序符合直觉：
+//  1. 词组档：match_phrase，各词在标题/正文里相邻出现，最接近「这几个字连在一起」；
+//  2. 全词档：simple_query_string 且 default_operator=AND，各词都出现、位置不限；
+//  3. 单词档：default_operator=OR，任一词出现即可。放在最后兜底，避免零结果。
 func buildSearchBody(query string, fuzzy bool) []byte {
 	var q map[string]any
 	if fuzzy {
@@ -215,10 +221,32 @@ func buildSearchBody(query string, fuzzy bool) []byte {
 			},
 		}
 	} else {
+		phrase := func(field string, boost int) map[string]any {
+			return map[string]any{
+				"match_phrase": map[string]any{
+					field: map[string]any{"query": query, "boost": boost},
+				},
+			}
+		}
+		terms := func(operator string, boost int) map[string]any {
+			return map[string]any{
+				"simple_query_string": map[string]any{
+					"query":            query,
+					"fields":           []string{"title^3", "content"},
+					"default_operator": operator,
+					"boost":            boost,
+				},
+			}
+		}
 		q = map[string]any{
-			"simple_query_string": map[string]any{
-				"query":  query,
-				"fields": []string{"title^3", "content"},
+			"bool": map[string]any{
+				"should": []any{
+					phrase("content", 100), // 1 词组档：正文
+					phrase("title", 300),   // 1 词组档：标题，权重为正文的 3 倍
+					terms("AND", 5),        // 2 全词档
+					terms("OR", 1),         // 3 单词档
+				},
+				"minimum_should_match": 1,
 			},
 		}
 	}
